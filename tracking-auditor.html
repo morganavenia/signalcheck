@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SignalCheck — Find what's broken in your tracking before it costs you</title>
+<script src="https://js.stripe.com/v3/"></script>
+<style>
+  :root{
+    --ink:#0d1b14;
+    --paper:#f3f0e7;
+    --signal:#15ff6e;
+    --signal-dim:#0fae4c;
+    --alert:#ff5a3c;
+    --warn:#ffb02e;
+    --line:rgba(13,27,20,.14);
+    --mute:#5b6660;
+    --card:#fbfaf5;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:'DM Sans',-apple-system,system-ui,sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    line-height:1.5;
+    overflow-x:hidden;
+  }
+  h1,h2,h3,.display{font-family:'Fraunces','Georgia',serif;}
+  .wrap{max-width:920px;margin:0 auto;padding:0 24px}
+
+  /* monospace meter strip as the signature element */
+  .meter-font{font-family:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,monospace}
+
+  header{padding:28px 0;display:flex;align-items:center;justify-content:space-between;gap:16px}
+  .logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;letter-spacing:-.01em}
+  .pulse{width:12px;height:12px;border-radius:50%;background:var(--signal);box-shadow:0 0 0 0 var(--signal);animation:p 2.2s infinite}
+  @keyframes p{0%{box-shadow:0 0 0 0 rgba(21,255,110,.5)}70%{box-shadow:0 0 0 12px rgba(21,255,110,0)}100%{box-shadow:0 0 0 0 rgba(21,255,110,0)}}
+  .tag{font-size:13px;color:var(--mute);font-weight:500}
+
+  .hero{padding:48px 0 24px}
+  .eyebrow{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--signal-dim);font-weight:600;margin-bottom:18px}
+  h1{font-size:clamp(38px,7vw,68px);line-height:.98;font-weight:600;letter-spacing:-.02em}
+  h1 em{font-style:italic;color:var(--signal-dim)}
+  .sub{font-size:clamp(17px,2.4vw,21px);color:var(--mute);max-width:580px;margin-top:22px;line-height:1.45}
+
+  .scanbox{margin-top:38px;background:var(--ink);border-radius:18px;padding:8px;box-shadow:0 30px 60px -30px rgba(13,27,20,.5)}
+  .scanrow{display:flex;gap:8px;flex-wrap:wrap}
+  .scanrow input{
+    flex:1;min-width:240px;background:#13261c;border:1px solid #1f3a2b;color:var(--paper);
+    font-size:16px;padding:18px 18px;border-radius:12px;font-family:inherit;outline:none;
+  }
+  .scanrow input::placeholder{color:#5e7567}
+  .scanrow input:focus{border-color:var(--signal)}
+  .scanrow button{
+    background:var(--signal);color:var(--ink);border:none;font-weight:700;font-size:16px;
+    padding:18px 26px;border-radius:12px;cursor:pointer;font-family:inherit;transition:transform .12s,background .12s;white-space:nowrap;
+  }
+  .scanrow button:hover{transform:translateY(-1px);background:#33ff82}
+  .scanrow button:disabled{opacity:.55;cursor:not-allowed;transform:none}
+  .hint{color:#6e8579;font-size:13px;padding:10px 12px 4px}
+
+  /* console / scan animation */
+  .console{display:none;margin-top:14px;background:#0a140e;border-radius:12px;padding:18px;max-height:200px;overflow:hidden}
+  .console.on{display:block}
+  .line{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:13px;color:#7fe0a0;opacity:0;animation:fade .3s forwards;padding:2px 0}
+  .line .ok{color:var(--signal)}
+  .line .bad{color:var(--alert)}
+  @keyframes fade{to{opacity:1}}
+
+  /* report */
+  #report{display:none;margin:48px 0}
+  #report.on{display:block;animation:rise .5s ease}
+  @keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+  .scorecard{display:flex;gap:20px;flex-wrap:wrap;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px 28px}
+  .bigscore{font-family:'Fraunces',serif;font-size:64px;line-height:1;font-weight:600}
+  .scoremeta{flex:1;min-width:200px}
+  .scoremeta .url{font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--mute);word-break:break-all}
+  .scoremeta h3{font-size:22px;margin:4px 0 6px}
+  .counts{display:flex;gap:18px;margin-top:10px;flex-wrap:wrap}
+  .count{font-size:14px;font-weight:600}
+  .count .n{font-family:'IBM Plex Mono',monospace}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
+
+  .findings{margin-top:28px;display:flex;flex-direction:column;gap:12px}
+  .finding{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--mute);border-radius:12px;padding:18px 20px}
+  .finding.crit{border-left-color:var(--alert)}
+  .finding.warn{border-left-color:var(--warn)}
+  .finding.ok{border-left-color:var(--signal-dim)}
+  .finding .ftop{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+  .finding h4{font-family:'DM Sans',sans-serif;font-size:16px;font-weight:700}
+  .sev{font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;padding:3px 9px;border-radius:999px}
+  .sev.crit{background:rgba(255,90,60,.14);color:#c2371f}
+  .sev.warn{background:rgba(255,176,46,.18);color:#9a6a00}
+  .sev.ok{background:rgba(15,174,76,.14);color:var(--signal-dim)}
+  .finding p{font-size:14px;color:var(--mute);margin-top:6px}
+
+  .locked{filter:blur(6px);user-select:none;pointer-events:none}
+  .gate{position:relative;margin-top:24px;border:1px dashed var(--line);border-radius:16px;padding:34px 28px;text-align:center;background:repeating-linear-gradient(45deg,var(--card),var(--card) 12px,#f6f4ec 12px,#f6f4ec 24px)}
+  .gate h3{font-size:26px;margin-bottom:8px}
+  .gate p{color:var(--mute);max-width:480px;margin:0 auto 20px;font-size:15px}
+  .price{font-family:'Fraunces',serif;font-size:30px;font-weight:600;margin-bottom:4px}
+  .pricesub{font-size:13px;color:var(--mute);margin-bottom:18px}
+  .buy{background:var(--ink);color:var(--paper);border:none;font-weight:700;font-size:16px;padding:16px 34px;border-radius:12px;cursor:pointer;font-family:inherit;transition:transform .12s}
+  .buy:hover{transform:translateY(-1px)}
+  .tier2{margin-top:14px;font-size:13px;color:var(--mute)}
+  .tier2 a{color:var(--signal-dim);font-weight:600;cursor:pointer;text-decoration:underline}
+
+  /* trust / how strip */
+  .strip{margin:64px 0;display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .strip .cell{background:var(--paper);padding:26px 22px}
+  .strip .num{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--signal-dim);font-weight:600;margin-bottom:10px}
+  .strip h4{font-family:'Fraunces',serif;font-size:19px;font-weight:600;margin-bottom:6px}
+  .strip p{font-size:14px;color:var(--mute)}
+  @media(max-width:640px){.strip{grid-template-columns:1fr}}
+
+  footer{padding:40px 0 60px;color:var(--mute);font-size:13px;border-top:1px solid var(--line);margin-top:40px}
+  .disclaim{font-size:12px;color:#8a948e;margin-top:8px;max-width:620px}
+
+  @media(max-width:520px){.bigscore{font-size:48px}}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400;1,9..144,600&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="logo"><span class="pulse"></span> SignalCheck</div>
+    <div class="tag meter-font">tracking audits · per scan</div>
+  </header>
+
+  <section class="hero">
+    <div class="eyebrow">Ad tracking diagnostics</div>
+    <h1>Your pixels are<br><em>lying to you.</em></h1>
+    <p class="sub">Broken tags, double-counted conversions, missing GA4 events. It looks fine in the dashboard while your spend optimizes toward garbage. Paste a URL and find out in 30 seconds.</p>
+
+    <div class="scanbox">
+      <div class="scanrow">
+        <input id="url" type="url" placeholder="https://yourstore.com" autocomplete="off" spellcheck="false">
+        <button id="run" onclick="runScan()">Run free scan</button>
+      </div>
+      <div class="hint meter-font">No login. Free scan reads what's publicly loading on the page. Deep audit unlocks the full breakdown.</div>
+      <div class="console" id="console"></div>
+    </div>
+  </section>
+
+  <section id="report"></section>
+
+  <section class="strip">
+    <div class="cell">
+      <div class="num">01</div>
+      <h4>It scans live</h4>
+      <p>Reads tag managers, analytics, pixels, and dataLayer structure straight off the page. No estimates.</p>
+    </div>
+    <div class="cell">
+      <div class="num">02</div>
+      <h4>It finds the money leaks</h4>
+      <p>Double-fired pixels and unbound conversions quietly inflate ROAS. You optimize toward a lie. This catches it.</p>
+    </div>
+    <div class="cell">
+      <div class="num">03</div>
+      <h4>You ship the report</h4>
+      <p>Agency tier gives you a white-label PDF you hand straight to the client. Their problem, your retainer.</p>
+    </div>
+  </section>
+
+  <footer class="wrap" style="padding-left:0;padding-right:0">
+    <div class="logo" style="font-size:15px;margin-bottom:10px"><span class="pulse"></span> SignalCheck</div>
+    <div>Built for paid media teams who are tired of being surprised by their own data.</div>
+    <div class="disclaim">The free scan inspects client-side resources loading on the public page. It cannot see server-side tagging, GTM container internals, or platform-side config without granted access. Those are covered in the deep audit.</div>
+  </footer>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG — drop your live keys here to go live
+   ============================================================ */
+const STRIPE_PUBLISHABLE_KEY = "pk_test_REPLACE_ME";
+// Stripe Checkout needs a backend to create a session. Two options:
+//  A) Quick: use Stripe Payment Links and just redirect (set these URLs)
+const PAYMENT_LINK_STANDARD = ""; // e.g. https://buy.stripe.com/xxx  ($79)
+const PAYMENT_LINK_AGENCY   = ""; // e.g. https://buy.stripe.com/yyy  ($149)
+//  B) Proper: a /create-checkout-session endpoint (Netlify function). Leave links blank to use this.
+const CHECKOUT_ENDPOINT = ""; // e.g. /.netlify/functions/checkout
+
+/* ============================================================
+   SCANNER
+   Browser can't fetch arbitrary cross-origin HTML directly, so we
+   route through a read-only proxy to grab the page source, then
+   detect tags by signature. Swap PROXY for your own Netlify
+   function (recommended) to avoid rate limits + control privacy.
+   ============================================================ */
+const PROXY = "https://api.allorigins.win/raw?url="; // dev/demo only — replace in prod
+
+const SIGNATURES = [
+  {key:"gtm", label:"Google Tag Manager", rx:/GTM-[A-Z0-9]{4,9}/g},
+  {key:"ga4", label:"GA4 (gtag)", rx:/G-[A-Z0-9]{8,12}/g},
+  {key:"ua",  label:"Universal Analytics (dead)", rx:/UA-\d{4,10}-\d{1,4}/g},
+  {key:"gads",label:"Google Ads conversion", rx:/AW-\d{9,12}/g},
+  {key:"meta",label:"Meta Pixel", rx:/fbq\(|connect\.facebook\.net\/[^"']*\/fbevents/g},
+  {key:"metaid",label:"Meta Pixel ID", rx:/fbq\(['"]init['"],\s*['"](\d{15,16})['"]/g},
+  {key:"tiktok",label:"TikTok Pixel", rx:/ttq\.|analytics\.tiktok\.com/g},
+  {key:"dlayer",label:"dataLayer", rx:/dataLayer\s*=|dataLayer\.push/g},
+  {key:"klaviyo",label:"Klaviyo", rx:/klaviyo|static\.klaviyo\.com/gi},
+  {key:"hotjar",label:"Hotjar", rx:/hotjar|static\.hotjar\.com/gi},
+];
+
+function uniq(arr){return [...new Set(arr)]}
+
+function logLine(html, cls){
+  const c=document.getElementById('console');
+  const d=document.createElement('div');
+  d.className='line';
+  d.innerHTML = html;
+  c.appendChild(d);
+  c.scrollTop=c.scrollHeight;
+}
+
+async function runScan(){
+  let url=document.getElementById('url').value.trim();
+  if(!url){document.getElementById('url').focus();return;}
+  if(!/^https?:\/\//i.test(url)) url="https://"+url;
+
+  const btn=document.getElementById('run');
+  btn.disabled=true;btn.textContent="Scanning…";
+  const con=document.getElementById('console');
+  con.className="console on";con.innerHTML="";
+  document.getElementById('report').className="";
+
+  const steps=[
+    "→ fetching page source…",
+    "→ parsing &lt;head&gt; and inline scripts…",
+    "→ matching tag signatures…",
+    "→ checking for duplicate fires…",
+    "→ scoring…"
+  ];
+  for(const s of steps){ logLine(s); await wait(260); }
+
+  let html="";
+  try{
+    const res=await fetch(PROXY+encodeURIComponent(url));
+    html=await res.text();
+  }catch(e){
+    logLine("<span class='bad'>✕ couldn't reach the page. check the URL or try again.</span>","bad");
+    btn.disabled=false;btn.textContent="Run free scan";return;
+  }
+
+  const found={};
+  SIGNATURES.forEach(sig=>{
+    const m=html.match(sig.rx);
+    if(m) found[sig.key]={label:sig.label, hits:uniq(m)};
+  });
+
+  // duplicate-fire heuristic: same GA4/Ads/Meta id appearing in multiple contexts
+  const ga4count=(html.match(/G-[A-Z0-9]{8,12}/g)||[]).length;
+  const metaInit=(html.match(/fbq\(['"]init['"]/g)||[]).length;
+  const gtmCount=uniq(html.match(/GTM-[A-Z0-9]{4,9}/g)||[]).length;
+
+  await wait(300);
+  logLine("<span class='ok'>✓ scan complete</span>","ok");
+  await wait(400);
+
+  renderReport(url, found, {ga4count, metaInit, gtmCount, raw:html});
+  btn.disabled=false;btn.textContent="Re-scan";
+  con.className="console";
+}
+
+function wait(ms){return new Promise(r=>setTimeout(r,ms))}
+
+function renderReport(url, found, sig){
+  const free=[]; const locked=[];
+
+  // ---- FREE teaser findings ----
+  if(!found.gtm && !found.ga4){
+    free.push(['crit','No analytics detected','We found no GTM container and no GA4 tag loading on this page. Either tracking is missing entirely or it loads server-side. Either way, your client-side attribution has a hole.']);
+  }
+  if(found.ua){
+    free.push(['crit','Universal Analytics is still here','UA stopped processing data in 2023. Any tag still firing it is dead weight and a sign nobody has audited this setup in a while.']);
+  }
+  if(found.gtm) free.push(['ok','Tag Manager present','GTM container detected ('+found.gtm.hits.join(', ')+'). Good. Whether it is configured correctly is the next question.']);
+  if(found.ga4) free.push(['ok','GA4 detected','GA4 is loading ('+found.ga4.hits.join(', ')+').']);
+  if(found.meta && !found.metaid){
+    free.push(['warn','Meta Pixel loads but no init ID found inline','The Meta base code is present but the pixel ID is not visible in page source. Often fine if injected via GTM, but worth confirming it actually fires.']);
+  }
+
+  // count the headline numbers
+  let critN=0,warnN=0,okN=0;
+
+  // ---- LOCKED (deep) findings — the value behind the paywall ----
+  if(sig.ga4count>1){
+    locked.push(['crit','GA4 appears to load more than once','Detected '+sig.ga4count+' GA4 references. Duplicate gtag loads double-count sessions and pageviews, which silently inflates every downstream conversion rate.']);
+  }
+  if(sig.metaInit>1){
+    locked.push(['crit','Meta Pixel initialized '+sig.metaInit+' times','Multiple fbq init calls mean events fire twice. Your CAPI dedup and your reported ROAS are both wrong until this is fixed.']);
+  }
+  if(found.gads && !found.gtm){
+    locked.push(['warn','Google Ads conversion hardcoded, no GTM','Conversion tag '+found.gads.hits.join(', ')+' is on the page directly. Hardcoded conversions are fragile and usually miss dynamic values.']);
+  }
+  if(found.dlayer){
+    locked.push(['warn','dataLayer present but structure unverified','A dataLayer exists. The deep audit confirms whether ecommerce events (purchase, add_to_cart) push the right schema or just empty objects.']);
+  }
+  // always include a couple of structural deep checks so the gate never looks empty
+  locked.push(['crit','Conversion-to-revenue binding not verified','We can see tags fire. We cannot confirm from outside that purchase values bind to the right transaction. This is the single most common cause of inflated ROAS and it needs granted access to confirm.']);
+  locked.push(['warn','Cross-domain / iframe checkout coverage','If checkout happens on a subdomain or embedded iframe (common with hosted carts), client-side events frequently break at the handoff. Deep audit traces the full path.']);
+
+  // score
+  critN = free.filter(f=>f[0]==='crit').length + locked.filter(f=>f[0]==='crit').length;
+  warnN = free.filter(f=>f[0]==='warn').length + locked.filter(f=>f[0]==='warn').length;
+  okN   = free.filter(f=>f[0]==='ok').length;
+
+  let score=100 - critN*18 - warnN*7; if(score<12)score=12; if(score>98)score=98;
+  let grade = score>=80?'Healthy-ish':score>=55?'Leaking':'Bleeding';
+  let scoreColor = score>=80?'var(--signal-dim)':score>=55?'var(--warn)':'var(--alert)';
+
+  const freeHTML=free.map(f=>finding(f)).join('');
+  const lockedHTML=locked.map(f=>finding(f)).join('');
+
+  document.getElementById('report').innerHTML = `
+    <div class="scorecard">
+      <div class="bigscore" style="color:${scoreColor}">${score}</div>
+      <div class="scoremeta">
+        <div class="url meter-font">${escapeHtml(url)}</div>
+        <h3>Tracking health: ${grade}</h3>
+        <div class="counts">
+          <span class="count"><span class="dot" style="background:var(--alert)"></span>${critN} <span class="meter-font n">critical</span></span>
+          <span class="count"><span class="dot" style="background:var(--warn)"></span>${warnN} <span class="meter-font n">warnings</span></span>
+          <span class="count"><span class="dot" style="background:var(--signal-dim)"></span>${okN} <span class="meter-font n">passing</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="findings">${freeHTML}</div>
+
+    <div class="gate">
+      <div class="findings locked">${lockedHTML}</div>
+      <h3 class="display">${critN+warnN-free.length} more issues found. Some are costing you money right now.</h3>
+      <p>The free scan shows surface problems. The deep audit unpacks duplicate fires, conversion-value binding, and the checkout handoff with exact fixes you can hand to a dev. Full report delivered as PDF.</p>
+      <div class="price">$79 <span class="pricesub" style="display:inline">per deep audit</span></div>
+      <button class="buy" onclick="checkout('standard')">Unlock the full report</button>
+      <div class="tier2">Run audits for clients? <a onclick="checkout('agency')">Get the $149 white-label agency tier →</a></div>
+    </div>
+  `;
+  document.getElementById('report').classList.add('on');
+  document.getElementById('report').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function finding(f){
+  const [sev,title,body]=f;
+  const label=sev==='crit'?'Critical':sev==='warn'?'Warning':'Passing';
+  return `<div class="finding ${sev}">
+    <div class="ftop"><h4>${escapeHtml(title)}</h4><span class="sev ${sev}">${label}</span></div>
+    <p>${escapeHtml(body)}</p>
+  </div>`;
+}
+
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+/* ============================================================
+   CHECKOUT — three ways to wire it, pick one
+   ============================================================ */
+async function checkout(tier){
+  // Option A: Stripe Payment Links (zero backend)
+  const link = tier==='agency'?PAYMENT_LINK_AGENCY:PAYMENT_LINK_STANDARD;
+  if(link){ window.location.href=link; return; }
+
+  // Option B: backend Checkout Session
+  if(CHECKOUT_ENDPOINT){
+    try{
+      const r=await fetch(CHECKOUT_ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tier})});
+      const {id}=await r.json();
+      const stripe=Stripe(STRIPE_PUBLISHABLE_KEY);
+      stripe.redirectToCheckout({sessionId:id});
+    }catch(e){ alert("Checkout isn't wired up yet. Add your Stripe keys in the config block at the top of the file."); }
+    return;
+  }
+
+  // Not configured yet
+  alert("Payment isn't live yet.\n\nTo go live: open this file, find the CONFIG block at the top of the <script>, and either\n• paste your Stripe Payment Link URLs (easiest, no backend), or\n• point CHECKOUT_ENDPOINT at a Netlify function.\n\nUntil then this is your working demo.");
+}
+</script>
+</body>
+</html>
