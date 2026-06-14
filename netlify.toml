@@ -1,0 +1,17 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# nice URLs
+[[redirects]]
+  from = "/scan"
+  to = "/.netlify/functions/scan"
+  status = 200
+
+[[redirects]]
+  from = "/checkout"
+  to = "/.netlify/functions/checkout"
+  status = 200

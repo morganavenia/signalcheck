@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tracking Audit Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0d1b14; --paper:#ffffff; --mute:#5b6660;
+    --alert:#c2371f; --warn:#9a6a00; --ok:#0fae4c;
+    --line:#e4e2d8; --soft:#faf9f4;
+    --brand:#0d1b14;        /* white-label: swap to client/agency color */
+    --brand-accent:#0fae4c;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'DM Sans',system-ui,sans-serif;color:var(--ink);background:#d8d6cc;line-height:1.5}
+  h1,h2,h3,.serif{font-family:'Fraunces',Georgia,serif}
+  .mono{font-family:'IBM Plex Mono',monospace}
+
+  /* on-screen controls, hidden in print */
+  .toolbar{position:sticky;top:0;z-index:10;background:var(--ink);color:#fff;padding:12px 20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:14px}
+  .toolbar input{flex:1;min-width:200px;background:#13261c;border:1px solid #1f3a2b;color:#fff;padding:9px 12px;border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:12px}
+  .toolbar button{background:var(--brand-accent);color:#062;border:none;font-weight:700;padding:9px 16px;border-radius:8px;cursor:pointer;font-family:inherit}
+  .toolbar .ghost{background:transparent;color:#fff;border:1px solid #2a4a37}
+  .toolbar small{color:#7fa890}
+
+  .page{max-width:8.5in;margin:18px auto;background:var(--paper);box-shadow:0 10px 40px rgba(0,0,0,.18);padding:0.7in 0.75in}
+
+  .rpt-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid var(--brand);padding-bottom:18px;margin-bottom:26px}
+  .brandmark{display:flex;align-items:center;gap:9px;font-weight:700;font-size:17px;color:var(--brand)}
+  .brandmark .dot{width:11px;height:11px;border-radius:50%;background:var(--brand-accent)}
+  .rpt-head .right{text-align:right;font-size:12px;color:var(--mute)}
+  .rpt-head .right .mono{font-size:11px}
+
+  .title-block{margin-bottom:30px}
+  .eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--brand-accent);font-weight:700;margin-bottom:10px}
+  h1{font-size:34px;font-weight:600;letter-spacing:-.02em;line-height:1.05}
+  .url-line{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--mute);margin-top:10px;word-break:break-all}
+
+  .scoreband{display:flex;gap:22px;align-items:center;background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:22px 26px;margin-bottom:30px}
+  .score{font-family:'Fraunces',serif;font-size:58px;font-weight:600;line-height:1}
+  .scoreband .meta h3{font-size:19px;margin-bottom:8px}
+  .pills{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;font-weight:600}
+  .pill .b{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+
+  .summary{margin-bottom:30px}
+  .summary h2{font-size:15px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin-bottom:10px;font-family:'DM Sans',sans-serif;font-weight:700}
+  .summary p{font-size:14.5px;color:#28332c;margin-bottom:10px}
+
+  .section-label{font-size:13px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--brand);margin:28px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+
+  .item{border-left:4px solid var(--mute);padding:14px 0 14px 16px;margin-bottom:14px;break-inside:avoid}
+  .item.crit{border-color:var(--alert)}
+  .item.warn{border-color:var(--warn)}
+  .item.ok{border-color:var(--ok)}
+  .item .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:5px}
+  .item h4{font-size:15.5px;font-weight:700}
+  .sev{font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap}
+  .sev.crit{background:#fbe7e2;color:var(--alert)}
+  .sev.warn{background:#fbf0d8;color:var(--warn)}
+  .sev.ok{background:#e2f6ea;color:var(--ok)}
+  .item p{font-size:13.5px;color:#3a453e}
+  .item .fix{font-size:13px;color:#28332c;margin-top:7px;background:var(--soft);border-radius:7px;padding:9px 12px}
+  .item .fix b{color:var(--brand-accent)}
+
+  .next{margin-top:30px;background:var(--brand);color:#eef3ef;border-radius:12px;padding:24px 26px;break-inside:avoid}
+  .next h3{font-size:18px;margin-bottom:12px;color:#fff}
+  .next ol{margin-left:18px;font-size:14px}
+  .next li{margin-bottom:7px}
+
+  .rpt-foot{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);font-size:11px;color:var(--mute);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+
+  @media print{
+    body{background:#fff}
+    .toolbar{display:none}
+    .page{box-shadow:none;margin:0;max-width:none;padding:0.5in 0.6in}
+    @page{margin:0.4in}
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <strong>Report builder</strong>
+  <input id="dataIn" placeholder="Paste scan JSON here, or append ?d=BASE64 to the URL">
+  <button onclick="loadPasted()">Load data</button>
+  <button class="ghost" onclick="window.print()">Save as PDF ↧</button>
+  <small id="status">demo data loaded</small>
+</div>
+
+<div class="page" id="page"><!-- rendered --></div>
+
+<script>
+const SAMPLE = {
+  url:"https://example-dispensary.com",
+  score:46, grade:"Bleeding",
+  counts:{critical:3, warnings:4, passing:2},
+  agency:{ name:"Your Agency", accent:"#0fae4c", prepared_for:"Client Name", analyst:"Morgan Avenia" },
+  free:[
+    ["crit","Universal Analytics still firing","A live UA-XXXXXXX tag was detected. UA stopped processing data in July 2023."],
+    ["ok","Tag Manager present","GTM-XXXXXXX detected and loading."],
+    ["ok","GA4 detected","G-XXXXXXXX is loading on the page."]
+  ],
+  locked:[
+    ["crit","GA4 loads more than once","Two GA4 references were found in source. Duplicate gtag loads double-count sessions, which inflates every downstream conversion rate and makes channel comparison unreliable."],
+    ["crit","Conversion-to-revenue binding unverified","Purchase events fire but transaction values do not consistently bind to the order. This is the single most common driver of inflated ROAS in reporting."],
+    ["warn","Hardcoded Google Ads conversion","AW-XXXXXXXXX sits directly in page source rather than in GTM. Fragile and likely missing dynamic order values."],
+    ["warn","Cross-domain / iframe checkout coverage","Checkout appears to hand off to an embedded cart. Client-side events commonly break at this boundary, undercounting real purchases."]
+  ]
+};
+
+const FIXES = {
+  "Universal Analytics still firing":"Remove the UA tag from GTM and confirm no hardcoded analytics.js remains. It does nothing but add load time.",
+  "GA4 loads more than once":"Audit GTM for a duplicate GA4 config tag and check the theme for a hardcoded gtag. Keep one source of truth.",
+  "Conversion-to-revenue binding unverified":"Verify the purchase event pushes a numeric value and transaction_id into the dataLayer at the real confirmation step, not on page load.",
+  "Hardcoded Google Ads conversion":"Move the conversion into GTM and pass dynamic value + currency from the dataLayer so reported revenue matches actual.",
+  "Cross-domain / iframe checkout coverage":"Wire the cart's postMessage events into GTM and enable cross-domain linking so the session survives the handoff."
+};
+
+function pickData(){
+  const p=new URLSearchParams(location.search);
+  const d=p.get("d");
+  if(d){ try{ return JSON.parse(decodeURIComponent(escape(atob(d)))); }catch(e){} }
+  return SAMPLE;
+}
+function loadPasted(){
+  const v=document.getElementById('dataIn').value.trim();
+  if(!v) return;
+  try{ render(JSON.parse(v)); document.getElementById('status').textContent="loaded pasted data"; }
+  catch(e){ document.getElementById('status').textContent="invalid JSON"; }
+}
+
+function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+
+function render(d){
+  const a=d.agency||{};
+  if(a.accent) document.documentElement.style.setProperty('--brand-accent',a.accent);
+  const scoreColor = d.score>=80?'var(--ok)':d.score>=55?'var(--warn)':'var(--alert)';
+  const all=[...(d.free||[]),...(d.locked||[])];
+  const date=new Date(d.meta?.scannedAt||Date.now()).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+
+  const summary = d.score>=80
+    ? "Tracking is broadly intact, with a few issues worth tightening before they drift. Nothing here is actively destroying your reporting, but the items below will sharpen attribution accuracy."
+    : d.score>=55
+    ? "Tracking is functional but leaking. Several issues are quietly skewing your numbers, which means budget is optimizing against data that does not match reality. The critical items should be fixed first."
+    : "Tracking is materially broken. Multiple critical issues are inflating or undercounting conversions, which means current reporting cannot be trusted for budget decisions. Treat the critical items as urgent.";
+
+  const items = all.map(f=>{
+    const [sev,title,body]=f;
+    const label=sev==='crit'?'Critical':sev==='warn'?'Warning':'Passing';
+    const fix=FIXES[title];
+    return `<div class="item ${sev}">
+      <div class="top"><h4>${esc(title)}</h4><span class="sev ${sev}">${label}</span></div>
+      <p>${esc(body)}</p>
+      ${fix?`<div class="fix"><b>Recommended fix.</b> ${esc(fix)}</div>`:''}
+    </div>`;
+  }).join('');
+
+  document.getElementById('page').innerHTML = `
+    <div class="rpt-head">
+      <div class="brandmark"><span class="dot"></span>${esc(a.name||"SignalCheck")}</div>
+      <div class="right">
+        <div>Tracking & Attribution Audit</div>
+        <div class="mono">${esc(date)}</div>
+      </div>
+    </div>
+
+    <div class="title-block">
+      <div class="eyebrow">Confidential audit report</div>
+      <h1>Tracking health diagnostic</h1>
+      <div class="url-line">${esc(d.url||"")}</div>
+      ${a.prepared_for?`<div class="url-line">Prepared for ${esc(a.prepared_for)}${a.analyst?` · by ${esc(a.analyst)}`:''}</div>`:''}
+    </div>
+
+    <div class="scoreband">
+      <div class="score" style="color:${scoreColor}">${d.score}</div>
+      <div class="meta">
+        <h3>Overall: ${esc(d.grade||'')}</h3>
+        <div class="pills">
+          <span class="pill"><span class="b" style="background:var(--alert)"></span>${d.counts.critical} critical</span>
+          <span class="pill"><span class="b" style="background:var(--warn)"></span>${d.counts.warnings} warnings</span>
+          <span class="pill"><span class="b" style="background:var(--ok)"></span>${d.counts.passing} passing</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="summary">
+      <h2>Executive summary</h2>
+      <p>${summary}</p>
+    </div>
+
+    <div class="section-label">Findings & recommended fixes</div>
+    ${items}
+
+    <div class="next">
+      <h3>Recommended next steps</h3>
+      <ol>
+        <li>Fix all critical items before trusting any reporting for budget decisions.</li>
+        <li>Re-scan after fixes to confirm duplicate fires and binding issues are resolved.</li>
+        <li>Set a monthly re-audit so site changes don't silently break tracking again.</li>
+      </ol>
+    </div>
+
+    <div class="rpt-foot">
+      <span>${esc(a.name||"SignalCheck")} · Tracking audit</span>
+      <span class="mono">Generated ${esc(date)}</span>
+    </div>
+  `;
+}
+
+render(pickData());
+</script>
+</body>
+</html>
